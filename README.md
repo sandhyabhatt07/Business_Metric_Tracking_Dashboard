@@ -55,7 +55,7 @@ Every KPI has one written definition in the [metrics spec](docs/metrics_spec.md)
 | Step | What | Status |
 |---|---|---|
 | 1 | Synthetic data generator, [data source docs](docs/data_sources.md), [metrics spec](docs/metrics_spec.md) | Done |
-| 2 | Load to BigQuery, Airflow DAG | Planned |
+| 2 | Load to BigQuery, Airflow DAG, [setup guide](docs/setup.md) | Done |
 | 3 | dbt: staging, star schema, KPI marts, tests | Planned |
 | 4 | Notebooks (A/B test, retention, churn model), dashboard | Planned |
 
@@ -63,9 +63,13 @@ Every KPI has one written definition in the [metrics spec](docs/metrics_spec.md)
 
 ```bash
 pip install -r requirements.txt
-make data     # full dataset into data/raw (about 20 seconds, about 170 MB)
+make data           # full dataset into data/raw (about 20 seconds, about 170 MB)
+make load-dry-run   # run every extract and load, writing NDJSON locally instead of BigQuery
 make test
 ```
+
+To load BigQuery and run Airflow, follow the [setup guide](docs/setup.md): create a free BigQuery
+sandbox project, add a service account key, then `docker compose up --build`.
 
 `make data-small` builds a 500-account version for quick iteration.
 
@@ -73,6 +77,9 @@ make test
 
 ```
 data_generator/   simulation of the business and writers for each source format
-docs/             data source reference and the metrics spec
-tests/            generator tests: integrity, ordering, planted data issues
+ingestion/        extractors for each source and loaders for BigQuery (or local NDJSON)
+dags/             Airflow DAG: generate sources, load raw tables, check them
+docker/           Airflow image (Airflow 3.2 plus the BigQuery client)
+docs/             setup guide, data source reference and the metrics spec
+tests/            generator, ingestion and DAG tests
 ```

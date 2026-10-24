@@ -1,0 +1,23 @@
+# Local Airflow for the metrics pipeline: one container running `airflow standalone`.
+# UI at http://localhost:8080 (no login in this local setup).
+services:
+  airflow:
+    build: ./docker
+    command: standalone
+    user: "${AIRFLOW_UID:-50000}:0"
+    ports:
+      - "8080:8080"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__DAGS_FOLDER: /opt/project/dags
+      AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS: "true"
+      PYTHONPATH: /opt/project
+      RAW_DATA_DIR: /opt/project/data/raw
+      LANDING_DIR: /opt/project/data/landing
+      GOOGLE_APPLICATION_CREDENTIALS: /opt/project/secrets/gcp-key.json
+    volumes:
+      - .:/opt/project
+    working_dir: /opt/project

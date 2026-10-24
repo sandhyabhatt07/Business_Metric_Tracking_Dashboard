@@ -15,8 +15,12 @@ services:
       AIRFLOW__CORE__DAGS_FOLDER: /opt/project/dags
       AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS: "true"
       PYTHONPATH: /opt/project
+      # duckdb works with no cloud account; set PIPELINE_TARGET=bigquery in .env to use BigQuery.
+      PIPELINE_TARGET: ${PIPELINE_TARGET:-duckdb}
       RAW_DATA_DIR: /opt/project/data/raw
       LANDING_DIR: /opt/project/data/landing
+      DUCKDB_PATH: /opt/project/data/warehouse.duckdb
+      DBT_PROJECT_DIR: /opt/project/transform
       GOOGLE_APPLICATION_CREDENTIALS: /opt/project/secrets/gcp-key.json
     volumes:
       - .:/opt/project

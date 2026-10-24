@@ -1,7 +1,7 @@
 """Extract-and-load jobs. Airflow calls these functions; the CLI runs them by hand.
 
-    python -m ingestion.run all --full-refresh            # backfill everything into BigQuery
-    python -m ingestion.run all --full-refresh --dry-run  # same, written to data/landing/ instead
+    python -m ingestion.run all --full-refresh                    # backfill into PIPELINE_TARGET
+    python -m ingestion.run all --full-refresh --target duckdb    # local warehouse file, no GCP needed
     python -m ingestion.run events --start 2026-09-29 --end 2026-09-30
 """
 
@@ -10,7 +10,7 @@ import logging
 from datetime import date, datetime, timedelta, timezone
 
 from . import extract
-from .load import BigQueryLoader, LocalLoader
+from .load import BigQueryLoader, DuckDBLoader, LocalLoader
 from .schemas import RAW_TABLES
 from .settings import Settings
 
@@ -18,11 +18,16 @@ log = logging.getLogger(__name__)
 SNAPSHOT_TABLES = [t for t in extract.APP_TABLES if t != "events"]
 
 
-def make_loader(settings: Settings, dry_run: bool):
-    if dry_run:
+def make_loader(settings: Settings, target: str | None = None):
+    target = target or settings.target
+    if target == "files":
         return LocalLoader(settings.landing_dir)
+    if target == "duckdb":
+        return DuckDBLoader(settings.duckdb_path, settings.raw_dataset)
+    if target != "bigquery":
+        raise SystemExit(f"unknown target {target!r}: use bigquery, duckdb or files")
     if not settings.gcp_project:
-        raise SystemExit("GCP_PROJECT is not set. Use --dry-run to write local files instead.")
+        raise SystemExit("GCP_PROJECT is not set. Use --target duckdb for a local warehouse instead.")
     loader = BigQueryLoader(settings.gcp_project, settings.raw_dataset, settings.bq_location,
                             partition=not settings.bq_sandbox)
     loader.ensure_dataset()
@@ -90,12 +95,13 @@ def main() -> None:
     p.add_argument("--end", default="2026-10-04",
                    help="day after the last day (UTC); a few days past the data so late events land")
     p.add_argument("--full-refresh", action="store_true", help="truncate and reload events")
-    p.add_argument("--dry-run", action="store_true", help="write NDJSON to LANDING_DIR instead of BigQuery")
+    p.add_argument("--target", choices=["bigquery", "duckdb", "files"],
+                   help="where to load (default: PIPELINE_TARGET, else bigquery)")
     args = p.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
     settings = Settings.from_env()
-    loader = make_loader(settings, args.dry_run)
+    loader = make_loader(settings, args.target)
     batch_id = "manual_" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
     start, end = _day(args.start), _day(args.end)
 

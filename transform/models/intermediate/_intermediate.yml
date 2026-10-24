@@ -1,0 +1,25 @@
+version: 2
+
+models:
+  - name: int_fx_rates_daily
+    description: Units of currency per USD for every day and currency, forward-filled over weekends and holidays.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [rate_date, currency]
+    columns:
+      - name: usd_rate
+        data_tests: [not_null]
+
+  - name: int_account_funnel
+    description: Funnel timestamps and strict step flags per customer account (see docs/metrics_spec.md, section 3).
+    columns:
+      - name: account_id
+        data_tests: [unique, not_null]
+
+  - name: int_mrr_account_months
+    description: Local-currency MRR for every paying account and month from its first paid month on.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [account_id, month_start]

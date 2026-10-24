@@ -1,0 +1,32 @@
+version: 2
+
+sources:
+  - name: raw
+    description: Raw tables loaded by the ingestion jobs, unchanged apart from `_batch_id` and `_loaded_at`.
+    schema: "{{ env_var('BQ_RAW_DATASET', 'raw') }}"
+    tables:
+      - name: app_accounts
+        columns:
+          - name: account_id
+            data_tests: [not_null, unique]
+      - name: app_users
+        columns:
+          - name: user_id
+            data_tests: [not_null, unique]
+      - name: app_events
+        description: Append-only event log. Contains duplicates by design (retried uploads, overlapping loads).
+      - name: app_subscriptions
+        columns:
+          - name: subscription_id
+            data_tests: [not_null, unique]
+      - name: app_invoices
+        columns:
+          - name: invoice_id
+            data_tests: [not_null, unique]
+      - name: app_experiment_assignments
+      - name: crm_companies
+        description: CRM company records, all text. Duplicates and inconsistent segment spellings by design.
+      - name: ad_spend
+        description: Rows from every monthly ad-platform export, all text.
+      - name: fx_rates
+        description: USD-based exchange rates on business days, all text.

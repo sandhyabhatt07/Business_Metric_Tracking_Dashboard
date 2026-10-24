@@ -11,3 +11,9 @@ __pycache__/
 
 # Credentials
 secrets/
+
+# dbt
+transform/target/
+transform/dbt_packages/
+transform/logs/
+logs/

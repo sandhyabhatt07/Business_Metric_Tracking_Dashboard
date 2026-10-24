@@ -1,0 +1,5 @@
+plan,tier_rank,list_price_usd_per_seat,min_seats
+Starter,1,15,1
+Growth,2,30,3
+Business,3,50,10
+Enterprise,4,75,25

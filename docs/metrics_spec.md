@@ -65,16 +65,24 @@ Two revenue metrics, used for different questions. Leadership's headline is **MR
 | **Source** | App DB `subscriptions`, FX feed, CRM for segment. |
 | **Owner** | Finance |
 
-**MRR movements** explain the change month over month. Every account's change falls in exactly one bucket:
+**MRR movements** explain the change month over month. Movements are classified in the account's
+own currency, so a weaker euro doesn't look like customers downgrading. Every account-month falls in
+exactly one bucket:
 
-- **New**: no MRR last month, and this is its first paid month.
+- **New**: first month with MRR.
 - **Expansion**: MRR went up (more seats or a plan upgrade).
 - **Contraction**: MRR went down but is still above zero.
 - **Churned**: had MRR last month, none this month.
 - **Reactivation**: no MRR last month, had MRR at some earlier point.
+- **Retained**: unchanged in local currency.
 
-`MRR(end) = MRR(start) + New + Expansion + Reactivation - Contraction - Churned`. A dbt test enforces
-this identity.
+Expansion and contraction are valued at this month's exchange rate. Whatever is left of the USD change
+for continuing accounts is reported as **FX impact**, so that:
+
+`MRR(end) = MRR(start) + New + Expansion + Reactivation - Contraction - Churned + FX impact`
+
+The dbt test `assert_mrr_movements_reconcile` enforces this identity every run, and a dbt unit test pins
+down the classification rules.
 
 ### 2b. Billed revenue
 
@@ -102,7 +110,7 @@ The self-serve funnel, measured per **signup cohort** (accounts grouped by the d
 
 | | |
 |---|---|
-| **Step conversion** | Accounts reaching step N / accounts reaching step N-1, within the windows above. |
+| **Step conversion** | Accounts reaching step N / accounts reaching step N-1, within the windows above. Steps are strict: an account that starts a trial without activating first doesn't count as reaching the trial step. |
 | **Overall conversion** | Accounts reaching Paid / accounts that signed up. |
 | **Grain** | One row per account, with a timestamp per step; aggregated by signup week, channel, segment and onboarding flow. |
 | **Source** | App DB `events`, `subscriptions`, `accounts`. |
@@ -133,8 +141,9 @@ A cohort's week-N cell is only shown once all its users are at least N weeks old
 | | |
 |---|---|
 | **Logo retention** | Of accounts paying 12 months ago, the share still paying today. |
-| **Gross revenue retention (GRR)** | `(MRR 12 months ago - contraction - churn from those accounts) / MRR 12 months ago`. Capped at 100%. |
+| **Gross revenue retention (GRR)** | For accounts paying 12 months ago: `sum(min(MRR today, MRR then)) / sum(MRR then)`. Counts contraction and churn but not expansion, so it is at most 100%. |
 | **Net revenue retention (NRR)** | `MRR today from accounts that were paying 12 months ago / their MRR 12 months ago`. Includes expansion; can exceed 100%. |
+| **Currency** | Both months are valued at today's exchange rates (constant currency). |
 | **Grain** | Monthly, by segment. |
 | **Source** | MRR model (2a). |
 | **Owner** | Finance |

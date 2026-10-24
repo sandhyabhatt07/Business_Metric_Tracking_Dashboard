@@ -1,0 +1,101 @@
+version: 2
+
+models:
+  - name: dim_date
+    description: Calendar from the start of history to the end of the spine, with ISO weeks (Monday start).
+    columns:
+      - name: date_day
+        data_tests: [unique, not_null]
+
+  - name: dim_account
+    description: >
+      Customer workspaces with CRM attributes (segment, industry, owner), onboarding flow, experiment
+      variant and current billing status. Segment is the governed definition used by every KPI.
+    columns:
+      - name: account_id
+        data_tests: [unique, not_null]
+      - name: segment
+        data_tests:
+          - accepted_values: {arguments: {values: [SMB, Mid-Market, Enterprise, Unknown, Internal]}}
+      - name: customer_status
+        data_tests:
+          - accepted_values: {arguments: {values: [paying, churned, free]}}
+
+  - name: dim_user
+    columns:
+      - name: user_id
+        data_tests: [unique, not_null]
+      - name: account_id
+        data_tests:
+          - relationships: {arguments: {to: ref('dim_account'), field: account_id}}
+
+  - name: dim_plan
+    columns:
+      - name: plan
+        data_tests: [unique, not_null]
+
+  - name: fct_events
+    description: Governed product events. Deduplicated; anonymous, clock-skewed and internal events removed.
+    columns:
+      - name: event_id
+        data_tests: [unique, not_null]
+      - name: user_id
+        data_tests:
+          - not_null
+          - relationships: {arguments: {to: ref('dim_user'), field: user_id}}
+
+  - name: fct_user_daily_activity
+    description: One row per user per active day. The basis of DAU, WAU, MAU and retention.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [user_id, activity_date]
+
+  - name: fct_invoices
+    description: Invoices converted to USD at the issue-date rate. `revenue_usd` counts paid invoices only.
+    columns:
+      - name: invoice_id
+        data_tests: [unique, not_null]
+      - name: amount_usd
+        data_tests: [not_null]
+
+  - name: fct_mrr_monthly
+    description: >
+      MRR per account per month in USD, with exactly one movement per row (new, expansion, contraction,
+      churned, reactivation, retained or inactive). Movements are classified in local currency; exchange
+      rate swings are reported separately as `fx_impact_usd`.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [account_id, month_start]
+    columns:
+      - name: movement
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [new, expansion, contraction, churned, reactivation, retained, inactive]
+
+  - name: fct_ad_spend_daily
+    description: Paid media spend per day, platform and campaign, in USD.
+
+unit_tests:
+  - name: mrr_movements_are_classified_in_local_currency
+    description: >
+      Seat growth is expansion, a rate change alone is FX impact (not contraction), a month at zero is
+      churn, and coming back is reactivation.
+    model: fct_mrr_monthly
+    given:
+      - input: ref('int_mrr_account_months')
+        rows:
+          - {account_id: 1, month_start: 2025-01-01, currency: EUR, mrr_local: 100, usd_rate: 1.0}
+          - {account_id: 1, month_start: 2025-02-01, currency: EUR, mrr_local: 150, usd_rate: 1.0}
+          - {account_id: 1, month_start: 2025-03-01, currency: EUR, mrr_local: 150, usd_rate: 0.5}
+          - {account_id: 1, month_start: 2025-04-01, currency: EUR, mrr_local: 0, usd_rate: 0.5}
+          - {account_id: 1, month_start: 2025-05-01, currency: EUR, mrr_local: 90, usd_rate: 0.5}
+    expect:
+      rows:
+        - {month_start: 2025-01-01, movement: new, new_mrr_usd: 100, expansion_mrr_usd: 0, churned_mrr_usd: 0, reactivation_mrr_usd: 0, fx_impact_usd: 0}
+        - {month_start: 2025-02-01, movement: expansion, new_mrr_usd: 0, expansion_mrr_usd: 50, churned_mrr_usd: 0, reactivation_mrr_usd: 0, fx_impact_usd: 0}
+        - {month_start: 2025-03-01, movement: retained, new_mrr_usd: 0, expansion_mrr_usd: 0, churned_mrr_usd: 0, reactivation_mrr_usd: 0, fx_impact_usd: 150}
+        - {month_start: 2025-04-01, movement: churned, new_mrr_usd: 0, expansion_mrr_usd: 0, churned_mrr_usd: 300, reactivation_mrr_usd: 0, fx_impact_usd: 0}
+        - {month_start: 2025-05-01, movement: reactivation, new_mrr_usd: 0, expansion_mrr_usd: 0, churned_mrr_usd: 0, reactivation_mrr_usd: 180, fx_impact_usd: 0}

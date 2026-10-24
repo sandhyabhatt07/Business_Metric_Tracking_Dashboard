@@ -1,0 +1,40 @@
+name: pulseboard_metrics
+version: "1.0.0"
+profile: pulseboard_metrics
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+clean-targets: ["target", "dbt_packages"]
+
+vars:
+  # First day of tracked history and the reporting "as of" date.
+  history_start: "2024-10-01"
+  as_of_date: "2026-09-30"
+  # Exclusive end of the calendar spines.
+  spine_end: "2027-01-01"
+  internal_email_domain: "pulseboard.io"
+  internal_account_id: 1000
+
+models:
+  pulseboard_metrics:
+    staging:
+      +schema: staging
+      +materialized: view
+    intermediate:
+      +schema: intermediate
+      +materialized: view
+    marts:
+      +materialized: table
+      core:
+        +schema: core
+      metrics:
+        +schema: metrics
+
+seeds:
+  pulseboard_metrics:
+    +schema: reference
+
+flags:
+  send_anonymous_usage_stats: false

@@ -1,0 +1,53 @@
+version: 2
+
+models:
+  - name: kpi_daily_active_users
+    description: >
+      DAU, WAU (trailing 7 days) and MAU (trailing 28 days) per UTC date and segment. Additive across
+      segments. Stickiness = sum(dau) / sum(mau). Definition: docs/metrics_spec.md, section 1.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [date_day, segment]
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "dau <= wau and wau <= mau"
+
+  - name: kpi_revenue_by_segment
+    description: >
+      Monthly MRR (headline revenue), MRR movements and billed revenue by segment, in USD.
+      Definition: docs/metrics_spec.md, section 2.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [month_start, segment]
+
+  - name: kpi_revenue_retention
+    description: 12-month logo, gross and net revenue retention by segment, in constant currency. Section 4b.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [month_start, segment]
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "gross_revenue_retention <= 1.000001 and net_revenue_retention >= gross_revenue_retention - 0.000001"
+
+  - name: kpi_funnel_by_cohort
+    description: Signup funnel counts by signup week, segment, channel and onboarding flow. Section 3.
+    data_tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "signups >= onboarded and onboarded >= activated and activated >= trial_started and trial_started >= paid"
+
+  - name: kpi_user_retention_cohorts
+    description: Weekly user retention by signup week and segment, weeks 0 to 26. Section 4a.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [signup_week, segment, week_number]
+
+  - name: kpi_acquisition_monthly
+    description: Signups, conversions to paid, spend, cost per signup and CAC per channel per month.
+
+  - name: kpi_onboarding_experiment
+    description: Funnel outcomes per variant of the onboarding_checklist_v1 A/B test.

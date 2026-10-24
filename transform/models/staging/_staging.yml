@@ -1,0 +1,100 @@
+version: 2
+
+models:
+  - name: stg_app__accounts
+    description: Workspaces from the App DB. Flags the internal QA workspace.
+    columns:
+      - name: account_id
+        data_tests: [unique, not_null]
+
+  - name: stg_app__users
+    description: Users from the App DB. `is_internal` marks PulseBoard staff and the QA workspace.
+    columns:
+      - name: user_id
+        data_tests: [unique, not_null]
+      - name: account_id
+        data_tests:
+          - not_null
+          - relationships: {arguments: {to: ref('stg_app__accounts'), field: account_id}}
+      - name: role
+        data_tests:
+          - accepted_values: {arguments: {values: [owner, member]}}
+
+  - name: stg_app__events
+    description: >
+      Product events, one row per `event_id` (earliest receipt wins). Anonymous and clock-skewed rows are
+      kept here and flagged; marts drop them.
+    columns:
+      - name: event_id
+        data_tests: [unique, not_null]
+      - name: event_name
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [signup, onboarding_completed, report_created, trial_started, invite_sent,
+                         invite_accepted, session_start, view_dashboard, run_query, create_report,
+                         share_report, export_data]
+
+  - name: stg_app__subscriptions
+    description: One row per subscription version. `mrr_local` is the monthly recurring amount in local currency.
+    columns:
+      - name: subscription_id
+        data_tests: [unique, not_null]
+      - name: plan
+        data_tests:
+          - relationships: {arguments: {to: ref('plans'), field: plan}}
+      - name: currency
+        data_tests:
+          - accepted_values: {arguments: {values: [USD, EUR, GBP, AUD, INR]}}
+      - name: mrr_local
+        data_tests:
+          - dbt_utils.accepted_range: {arguments: {min_value: 0, inclusive: false}}
+
+  - name: stg_app__invoices
+    columns:
+      - name: invoice_id
+        data_tests: [unique, not_null]
+      - name: status
+        data_tests:
+          - accepted_values: {arguments: {values: [paid, failed, refunded]}}
+
+  - name: stg_app__experiment_assignments
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [user_id, experiment_name]
+    columns:
+      - name: variant
+        data_tests:
+          - accepted_values: {arguments: {values: [control, treatment]}}
+
+  - name: stg_crm__companies
+    description: One CRM record per app account (latest modified wins), with segment mapped to SMB, Mid-Market or Enterprise.
+    columns:
+      - name: account_id
+        data_tests: [unique, not_null]
+      - name: segment
+        description: Canonical segment. `Unknown` only when the CRM spelling isn't in the `segment_mapping` seed.
+        data_tests:
+          - accepted_values: {arguments: {values: [SMB, Mid-Market, Enterprise]}}
+
+  - name: stg_marketing__ad_spend
+    description: Daily spend per platform and campaign, parsed and deduplicated across overlapping exports.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [spend_date, platform, campaign_name]
+    columns:
+      - name: channel
+        description: App signup channel the platform maps to (from the `ad_platform_channels` seed).
+        data_tests: [not_null]
+
+  - name: stg_fx__rates
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [rate_date, currency]
+    columns:
+      - name: usd_rate
+        data_tests:
+          - dbt_utils.accepted_range: {arguments: {min_value: 0, inclusive: false}}

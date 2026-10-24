@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      RAW_DATA_DIR: data/raw
+      DUCKDB_PATH: ${{ github.workspace }}/data/warehouse.duckdb
+      DBT_PROFILES_DIR: ${{ github.workspace }}/transform
+      DBT_TARGET: duckdb
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install
+        run: pip install -r requirements.txt -r docker/requirements-dbt.txt
+      - name: Python tests
+        run: python -m pytest -q
+      - name: Generate a small dataset and load it into DuckDB
+        run: |
+          python -m data_generator.generate --out data/raw --accounts 500
+          python -m ingestion.run all --full-refresh --target duckdb
+      - name: dbt build (models and tests)
+        working-directory: transform
+        run: |
+          dbt deps
+          dbt build

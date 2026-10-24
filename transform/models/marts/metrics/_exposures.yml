@@ -1,0 +1,18 @@
+version: 2
+
+exposures:
+  - name: leadership_metrics_dashboard
+    label: Leadership metrics dashboard
+    type: dashboard
+    maturity: high
+    description: The single source of truth for DAU, revenue by segment, funnel conversion and retention.
+    owner:
+      name: Analytics
+    depends_on:
+      - ref('kpi_daily_active_users')
+      - ref('kpi_revenue_by_segment')
+      - ref('kpi_revenue_retention')
+      - ref('kpi_funnel_by_cohort')
+      - ref('kpi_user_retention_cohorts')
+      - ref('kpi_acquisition_monthly')
+      - ref('kpi_onboarding_experiment')

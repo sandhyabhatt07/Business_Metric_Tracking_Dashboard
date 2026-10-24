@@ -1,4 +1,4 @@
-"""Loaders: write extracted rows to BigQuery, or to local NDJSON files for a dry run.
+"""Loaders: write extracted rows to BigQuery, a local DuckDB warehouse, or NDJSON files.
 
 BigQuery loads use load jobs (not streaming or DML), so they also work in the free BigQuery sandbox.
 """
@@ -49,6 +49,48 @@ class LocalLoader:
     def row_count(self, table_name: str) -> int:
         folder = self.landing_dir / table_name
         return sum(f.read_bytes().count(b"\n") for f in folder.glob("*.ndjson")) if folder.exists() else 0
+
+
+DUCKDB_TYPES = {"INT64": "BIGINT", "STRING": "VARCHAR", "TIMESTAMP": "TIMESTAMP", "FLOAT64": "DOUBLE"}
+
+
+class DuckDBLoader:
+    """A local stand-in for BigQuery: same raw tables, in the `raw` schema of a DuckDB file."""
+
+    def __init__(self, path: Path, schema: str = "raw"):
+        import duckdb
+
+        self.duckdb = duckdb
+        self.path = path
+        self.schema = schema
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with duckdb.connect(str(path)) as con:
+            con.execute(f"CREATE SCHEMA IF NOT EXISTS {schema}")
+
+    def load(self, table_name: str, rows: list[dict], batch_id: str, replace: bool | None = None) -> int:
+        import tempfile
+
+        table = RAW_TABLES[table_name]
+        replace = table.mode == "replace" if replace is None else replace
+        cols = {name: DUCKDB_TYPES[typ] for name, typ in table.all_columns}
+        ddl = ", ".join(f'"{c}" {t}' for c, t in cols.items())
+        target = f"{self.schema}.{table.name}"
+        with tempfile.NamedTemporaryFile(suffix=".ndjson") as fh, self.duckdb.connect(str(self.path)) as con:
+            fh.write(to_ndjson(rows, table, batch_id))
+            fh.flush()
+            con.execute(f"CREATE {'OR REPLACE ' if replace else ''}TABLE "
+                        f"{'' if replace else 'IF NOT EXISTS '}{target} ({ddl})")
+            if rows:
+                columns = "{" + ", ".join(f"'{c}': '{t}'" for c, t in cols.items()) + "}"
+                con.execute(f"INSERT INTO {target} SELECT * FROM read_json('{fh.name}', "
+                            f"format = 'newline_delimited', columns = {columns})")
+        return len(rows)
+
+    def row_count(self, table_name: str) -> int:
+        with self.duckdb.connect(str(self.path)) as con:
+            exists = con.execute("SELECT count(*) FROM information_schema.tables "
+                                 "WHERE table_schema = ? AND table_name = ?", [self.schema, table_name]).fetchone()[0]
+            return con.execute(f"SELECT count(*) FROM {self.schema}.{table_name}").fetchone()[0] if exists else 0
 
 
 class BigQueryLoader:

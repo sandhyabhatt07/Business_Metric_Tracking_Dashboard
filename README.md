@@ -26,15 +26,17 @@ flowchart LR
     end
     subgraph Airflow
         E[Extract and load]
+        T[dbt build<br/>models and tests]
     end
-    subgraph BigQuery
+    subgraph Warehouse["BigQuery (or DuckDB locally)"]
         R[raw]
         S[staging]
         W[star schema<br/>facts and dims]
         K[KPI marts]
     end
     A & C & M & F --> E --> R
-    R -- dbt --> S -- dbt --> W -- dbt --> K
+    R --> S --> W --> K
+    T -.runs.-> S
     K --> D[Dashboard]
     W --> N[Notebooks<br/>A/B test, retention, churn model]
 ```
@@ -56,30 +58,43 @@ Every KPI has one written definition in the [metrics spec](docs/metrics_spec.md)
 |---|---|---|
 | 1 | Synthetic data generator, [data source docs](docs/data_sources.md), [metrics spec](docs/metrics_spec.md) | Done |
 | 2 | Load to BigQuery, Airflow DAG, [setup guide](docs/setup.md) | Done |
-| 3 | dbt: staging, star schema, KPI marts, tests | Planned |
+| 3 | dbt: staging, star schema, KPI marts, about 100 tests ([warehouse model](docs/warehouse_model.md)) | Done |
 | 4 | Notebooks (A/B test, retention, churn model), dashboard | Planned |
+
+## Highlights
+
+- **One definition per metric**, written down in the [metrics spec](docs/metrics_spec.md) and enforced in
+  dbt tests. For example, MRR movements must reconcile to the change in MRR every month, and a new CRM
+  segment spelling fails the build until someone maps it.
+- **Seventeen real-world data problems handled on purpose**: duplicate and late events, internal users,
+  inconsistent CRM entries, overlapping exports, five currencies, weekend FX gaps
+  ([list](docs/data_sources.md#known-data-quality-issues)).
+- **Runs anywhere.** The same dbt models build on BigQuery and on a local DuckDB file, so CI runs the
+  whole pipeline on every push without cloud credentials.
+- **Orchestrated in Airflow 3**: a daily, incremental, idempotent DAG that backfills itself on first run.
 
 ## Quick start
 
+No cloud account needed:
+
 ```bash
-pip install -r requirements.txt
-make data           # full dataset into data/raw (about 20 seconds, about 170 MB)
-make load-dry-run   # run every extract and load, writing NDJSON locally instead of BigQuery
-make test
+pip install -r requirements.txt -r docker/requirements-dbt.txt
+make data        # generate the four sources (about 20 seconds)
+make warehouse   # load them into a local DuckDB warehouse
+make dbt         # build the models and run the tests
+make test        # Python tests
 ```
 
-To load BigQuery and run Airflow, follow the [setup guide](docs/setup.md): create a free BigQuery
-sandbox project, add a service account key, then `docker compose up --build`.
-
-`make data-small` builds a 500-account version for quick iteration.
+For BigQuery and Airflow, follow the [setup guide](docs/setup.md).
 
 ## Repository layout
 
 ```
 data_generator/   simulation of the business and writers for each source format
 ingestion/        extractors for each source and loaders for BigQuery (or local NDJSON)
-dags/             Airflow DAG: generate sources, load raw tables, check them
-docker/           Airflow image (Airflow 3.2 plus the BigQuery client)
-docs/             setup guide, data source reference and the metrics spec
+transform/        dbt project: staging, intermediate, core (star schema) and metrics models
+dags/             Airflow DAG: generate sources, load raw tables, check them, dbt build
+docker/           Airflow image (Airflow 3.2, BigQuery client, dbt in its own virtualenv)
+docs/             setup guide, data sources, warehouse model and the metrics spec
 tests/            generator, ingestion and DAG tests
 ```

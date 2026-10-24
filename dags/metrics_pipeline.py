@@ -1,17 +1,21 @@
-"""Daily pipeline: sources -> BigQuery raw -> (dbt models, added in step 3).
+"""Daily pipeline: sources -> raw tables -> dbt models and tests.
 
 The first run backfills the two years of history (so does triggering with `full_refresh = true`).
 Later runs load only the events received in their data interval, plus fresh snapshots of the small tables.
-Set PIPELINE_DRY_RUN=true to write NDJSON files to LANDING_DIR instead of BigQuery.
+
+PIPELINE_TARGET picks the warehouse: `bigquery`, or `duckdb` for a local file that needs no cloud account.
 """
 
 import os
 from datetime import datetime, timedelta, timezone
 
-from airflow.sdk import Param, dag, get_current_context, task
+from airflow.providers.standard.operators.bash import BashOperator
+from airflow.sdk import Param, chain, dag, get_current_context, task
 
 HISTORY_START = datetime(2024, 10, 1, tzinfo=timezone.utc)
-DRY_RUN = os.getenv("PIPELINE_DRY_RUN", "false").lower() in ("1", "true", "yes")
+TARGET = os.getenv("PIPELINE_TARGET", "duckdb")
+DBT_BIN = os.getenv("DBT_BIN", "dbt")
+DBT_DIR = os.getenv("DBT_PROJECT_DIR", "/opt/project/transform")
 
 
 def _context():
@@ -22,7 +26,7 @@ def _context():
     ctx = get_current_context()
     settings = Settings.from_env()
     batch_id = ctx["run_id"].replace(":", "").replace("+", "_")
-    return ctx, settings, make_loader(settings, DRY_RUN), batch_id
+    return ctx, settings, make_loader(settings, TARGET), batch_id
 
 
 def _interval(ctx) -> tuple[datetime, datetime]:
@@ -112,9 +116,20 @@ def metrics_pipeline():
         _, _, loader, _ = _context()
         return run(loader)
 
-    sources = ensure_sources()
+    dbt_build = BashOperator(
+        task_id="dbt_build",
+        doc_md="Run every dbt model, seed, snapshot and test. Any failing test fails the run.",
+        bash_command=f"cd {DBT_DIR} && {DBT_BIN} deps --quiet && {DBT_BIN} build --target {TARGET}",
+        env={"DBT_PROFILES_DIR": DBT_DIR},
+        append_env=True,
+    )
+
     loads = [load_app_snapshots(), load_app_events(), load_crm(), load_ad_spend(), load_fx()]
-    sources >> loads >> check_raw_tables()
+    if TARGET == "duckdb":
+        # DuckDB allows one writer at a time, so load sequentially.
+        chain(ensure_sources(), *loads, check_raw_tables(), dbt_build)
+    else:
+        chain(ensure_sources(), loads, check_raw_tables(), dbt_build)
 
 
 metrics_pipeline()

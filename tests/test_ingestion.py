@@ -8,7 +8,7 @@ import pytest
 from data_generator.config import Config
 from data_generator.generate import build, write_all
 from ingestion import extract
-from ingestion.load import LocalLoader, to_ndjson
+from ingestion.load import DuckDBLoader, LocalLoader, to_ndjson
 from ingestion.run import check_raw_tables, load_app_events, load_app_snapshots
 from ingestion.schemas import RAW_TABLES
 from ingestion.settings import Settings
@@ -26,8 +26,9 @@ def raw_dir(tmp_path_factory):
 
 @pytest.fixture
 def settings(raw_dir, tmp_path):
-    return Settings(gcp_project=None, bq_location="US", raw_dataset="raw", bq_sandbox=True,
-                    data_dir=raw_dir, landing_dir=tmp_path / "landing", crm_source=str(raw_dir / "crm"),
+    return Settings(target="files", gcp_project=None, bq_location="US", raw_dataset="raw", bq_sandbox=True,
+                    data_dir=raw_dir, landing_dir=tmp_path / "landing", duckdb_path=tmp_path / "wh.duckdb",
+                    crm_source=str(raw_dir / "crm"),
                     fx_source=str(raw_dir / "fx"), events_lookback_days=3)
 
 
@@ -82,6 +83,20 @@ def test_check_raw_tables_fails_on_missing_table(settings):
     load_app_snapshots(settings, loader, "b1")
     with pytest.raises(RuntimeError, match="crm_companies"):
         check_raw_tables(loader)
+
+
+def test_duckdb_loader_replaces_and_appends(settings):
+    pytest.importorskip("duckdb")
+    loader = DuckDBLoader(settings.duckdb_path)
+    start, end = datetime(2025, 6, 10, tzinfo=UTC), datetime(2025, 6, 12, tzinfo=UTC)
+    first = load_app_events(settings, loader, "b1", start, end)
+    load_app_events(settings, loader, "b2", start, end)
+    assert loader.row_count("app_events") == 2 * first > 0   # appends: staging dedups the overlap
+    load_app_snapshots(settings, loader, "b3")
+    n_users = loader.row_count("app_users")
+    load_app_snapshots(settings, loader, "b4")
+    assert loader.row_count("app_users") == n_users          # snapshots replace
+    assert loader.row_count("crm_companies") == 0
 
 
 def test_bigquery_loader_job_config():

@@ -1,3 +1,4 @@
+duckdb
 google-cloud-bigquery
 numpy
 pandas

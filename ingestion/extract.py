@@ -38,7 +38,7 @@ def extract_app_table(db_path: Path, table: str, received_from: datetime | None 
     if table == "events" and received_from is not None:
         sql += " WHERE received_at >= ? AND received_at < ?"
         params = [received_from.strftime("%Y-%m-%d %H:%M:%S"), received_to.strftime("%Y-%m-%d %H:%M:%S")]
-    with sqlite3.connect(f"file:{db_path}?mode=ro", uri=True) as con:
+    with sqlite3.connect(Path(db_path).resolve().as_uri() + "?mode=ro", uri=True) as con:
         con.row_factory = sqlite3.Row
         return [dict(r) for r in con.execute(sql, params)]
 

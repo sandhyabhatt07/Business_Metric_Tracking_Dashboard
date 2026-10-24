@@ -75,14 +75,15 @@ class DuckDBLoader:
         cols = {name: DUCKDB_TYPES[typ] for name, typ in table.all_columns}
         ddl = ", ".join(f'"{c}" {t}' for c, t in cols.items())
         target = f"{self.schema}.{table.name}"
-        with tempfile.NamedTemporaryFile(suffix=".ndjson") as fh, self.duckdb.connect(str(self.path)) as con:
-            fh.write(to_ndjson(rows, table, batch_id))
-            fh.flush()
+        # A temporary directory rather than an open temp file, so DuckDB can read it on Windows too.
+        with tempfile.TemporaryDirectory() as tmp, self.duckdb.connect(str(self.path)) as con:
+            batch_file = Path(tmp) / f"{table.name}.ndjson"
+            batch_file.write_bytes(to_ndjson(rows, table, batch_id))
             con.execute(f"CREATE {'OR REPLACE ' if replace else ''}TABLE "
                         f"{'' if replace else 'IF NOT EXISTS '}{target} ({ddl})")
             if rows:
                 columns = "{" + ", ".join(f"'{c}': '{t}'" for c, t in cols.items()) + "}"
-                con.execute(f"INSERT INTO {target} SELECT * FROM read_json('{fh.name}', "
+                con.execute(f"INSERT INTO {target} SELECT * FROM read_json('{batch_file.as_posix()}', "
                             f"format = 'newline_delimited', columns = {columns})")
         return len(rows)
 

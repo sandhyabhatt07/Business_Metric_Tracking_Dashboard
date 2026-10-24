@@ -1,0 +1,10 @@
+# Generated data: rebuild with `make data`
+data/
+
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+.env
+.ipynb_checkpoints/
+.DS_Store

@@ -59,7 +59,15 @@ Every KPI has one written definition in the [metrics spec](docs/metrics_spec.md)
 | 1 | Synthetic data generator, [data source docs](docs/data_sources.md), [metrics spec](docs/metrics_spec.md) | Done |
 | 2 | Load to BigQuery, Airflow DAG, [setup guide](docs/setup.md) | Done |
 | 3 | dbt: staging, star schema, KPI marts, about 100 tests ([warehouse model](docs/warehouse_model.md)) | Done |
-| 4 | Notebooks (A/B test, retention, churn model), dashboard | Planned |
+| 4 | [Notebooks](notebooks/) (A/B test, retention, churn model) and the [dashboard](dashboard/) for Power BI and Looker Studio | Done |
+
+## Findings
+
+| | |
+|---|---|
+| **Onboarding A/B test** | The guided checklist raised activation from 41% to 51% (p < 0.001). Revenue impact can't be measured at this sample size, and the analysis says so. [Notebook](notebooks/01_onboarding_ab_test.ipynb) |
+| **Retention** | Owners who don't activate in week 1 almost never come back. Enterprise net revenue retention is 104%, SMB 82%. [Notebook](notebooks/02_retention.ipynb) |
+| **Churn risk** | A point-in-time model ranks accounts with ROC AUC 0.80. The riskiest 10% hold about 40% of next-60-day churners, and the scores feed the dashboard. [Notebook](notebooks/03_churn_model.ipynb) |
 
 ## Highlights
 
@@ -72,6 +80,8 @@ Every KPI has one written definition in the [metrics spec](docs/metrics_spec.md)
 - **Runs anywhere.** The same dbt models build on BigQuery and on a local DuckDB file, so CI runs the
   whole pipeline on every push without cloud credentials.
 - **Orchestrated in Airflow 3**: a daily, incremental, idempotent DAG that backfills itself on first run.
+- **Data science on governed data.** The notebooks read the same tables as the dashboard, and a test
+  proves the churn features never use information from after the prediction date.
 
 ## Quick start
 
@@ -93,6 +103,9 @@ For BigQuery and Airflow, follow the [setup guide](docs/setup.md).
 data_generator/   simulation of the business and writers for each source format
 ingestion/        extractors for each source and loaders for BigQuery (or local NDJSON)
 transform/        dbt project: staging, intermediate, core (star schema) and metrics models
+notebooks/        A/B test analysis, retention and survival, churn model
+analysis/         notebook helpers: warehouse access, churn features, CSV export
+dashboard/        dashboard spec, Power BI guide, DAX measures, theme, Looker Studio guide
 dags/             Airflow DAG: generate sources, load raw tables, check them, dbt build
 docker/           Airflow image (Airflow 3.2, BigQuery client, dbt in its own virtualenv)
 docs/             setup guide, data sources, warehouse model and the metrics spec

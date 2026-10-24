@@ -17,6 +17,10 @@ experiment as (
     where experiment_name = 'onboarding_checklist_v1'
 ),
 
+funnel as (
+    select * from {{ ref('int_account_funnel') }}
+),
+
 subs as (
     select
         account_id,
@@ -45,6 +49,8 @@ select
     crm.crm_company_id is not null as is_in_crm,
     o.onboarding_flow,
     x.variant as onboarding_experiment_variant,
+    f.activated_at,
+    coalesce(f.is_activated, false) as is_activated,
     s.first_paid_at,
     s.current_plan,
     s.current_mrr_local,
@@ -59,4 +65,5 @@ from accounts as a
 left join crm on a.account_id = crm.account_id
 left join owners as o on a.owner_user_id = o.user_id
 left join experiment as x on a.owner_user_id = x.user_id
+left join funnel as f on a.account_id = f.account_id
 left join subs as s on a.account_id = s.account_id

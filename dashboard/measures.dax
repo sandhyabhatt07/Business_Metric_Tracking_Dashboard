@@ -1,0 +1,242 @@
+// PulseBoard leadership dashboard: tables and measures.
+// Paste each block into Power BI Desktop (Modeling > New table / New measure).
+// Definitions follow docs/metrics_spec.md. Table names match the warehouse tables.
+
+// ======================================================================================
+// Calculated tables
+// ======================================================================================
+
+// Mark as date table on [Date] (Table tools > Mark as date table).
+Date =
+ADDCOLUMNS (
+    CALENDAR ( DATE ( 2024, 9, 30 ), DATE ( 2026, 12, 31 ) ),
+    "Month", DATE ( YEAR ( [Date] ), MONTH ( [Date] ), 1 ),
+    "Month Label", FORMAT ( [Date], "mmm yyyy" ),
+    "Year", YEAR ( [Date] )
+)
+
+Segment =
+DATATABLE (
+    "Segment", STRING,
+    "Sort Order", INTEGER,
+    {
+        { "SMB", 1 },
+        { "Mid-Market", 2 },
+        { "Enterprise", 3 },
+        { "Unknown", 4 }
+    }
+)
+
+Funnel Steps =
+DATATABLE (
+    "Step", STRING,
+    "Step Order", INTEGER,
+    {
+        { "Signed up", 1 },
+        { "Onboarded", 2 },
+        { "Activated", 3 },
+        { "Started trial", 4 },
+        { "Paid", 5 }
+    }
+)
+
+// ======================================================================================
+// Header
+// ======================================================================================
+
+Data As Of =
+"Data as of " & FORMAT ( CALCULATE ( MAX ( kpi_daily_active_users[date_day] ), REMOVEFILTERS () ), "d mmm yyyy" )
+
+// ======================================================================================
+// Engagement (kpi_daily_active_users)
+// ======================================================================================
+
+// Average daily active users over the selected dates.
+DAU =
+VAR DaysWithData =
+    FILTER (
+        VALUES ( 'Date'[Date] ),
+        NOT ISBLANK ( CALCULATE ( SUM ( kpi_daily_active_users[dau] ) ) )
+    )
+RETURN
+    AVERAGEX ( DaysWithData, CALCULATE ( SUM ( kpi_daily_active_users[dau] ) ) )
+
+// Trailing-28-day active users on the last day in context.
+MAU =
+VAR LastDay = CALCULATE ( MAX ( kpi_daily_active_users[date_day] ) )
+RETURN
+    CALCULATE ( SUM ( kpi_daily_active_users[mau] ), REMOVEFILTERS ( 'Date' ), 'Date'[Date] = LastDay )
+
+WAU =
+VAR LastDay = CALCULATE ( MAX ( kpi_daily_active_users[date_day] ) )
+RETURN
+    CALCULATE ( SUM ( kpi_daily_active_users[wau] ), REMOVEFILTERS ( 'Date' ), 'Date'[Date] = LastDay )
+
+// DAU / MAU, averaged over the selected days.
+Stickiness =
+DIVIDE ( SUM ( kpi_daily_active_users[dau] ), SUM ( kpi_daily_active_users[mau] ) )
+
+// ======================================================================================
+// Revenue (kpi_revenue_by_segment)
+// ======================================================================================
+
+// MRR at the end of the last month in context.
+MRR =
+VAR LastMonth = CALCULATE ( MAX ( kpi_revenue_by_segment[month_start] ) )
+RETURN
+    CALCULATE ( SUM ( kpi_revenue_by_segment[mrr_usd] ), REMOVEFILTERS ( 'Date' ), 'Date'[Date] = LastMonth )
+
+MRR Previous Month =
+VAR LastMonth = CALCULATE ( MAX ( kpi_revenue_by_segment[month_start] ) )
+RETURN
+    CALCULATE (
+        SUM ( kpi_revenue_by_segment[mrr_usd] ),
+        REMOVEFILTERS ( 'Date' ),
+        'Date'[Date] = EDATE ( LastMonth, -1 )
+    )
+
+MRR MoM % =
+DIVIDE ( [MRR] - [MRR Previous Month], [MRR Previous Month] )
+
+ARR =
+[MRR] * 12
+
+Paying Accounts =
+VAR LastMonth = CALCULATE ( MAX ( kpi_revenue_by_segment[month_start] ) )
+RETURN
+    CALCULATE ( SUM ( kpi_revenue_by_segment[paying_accounts] ), REMOVEFILTERS ( 'Date' ), 'Date'[Date] = LastMonth )
+
+ARPA =
+DIVIDE ( [MRR], [Paying Accounts] )
+
+New MRR = SUM ( kpi_revenue_by_segment[new_mrr_usd] )
+Expansion MRR = SUM ( kpi_revenue_by_segment[expansion_mrr_usd] )
+Reactivation MRR = SUM ( kpi_revenue_by_segment[reactivation_mrr_usd] )
+// Shown as negative so movement charts stack below zero.
+Contraction MRR = - SUM ( kpi_revenue_by_segment[contraction_mrr_usd] )
+Churned MRR = - SUM ( kpi_revenue_by_segment[churned_mrr_usd] )
+FX Impact = SUM ( kpi_revenue_by_segment[fx_impact_usd] )
+
+// Customer-driven change in MRR, excluding exchange-rate effects.
+Net New MRR =
+[New MRR] + [Expansion MRR] + [Reactivation MRR] + [Contraction MRR] + [Churned MRR]
+
+Billed Revenue = SUM ( kpi_revenue_by_segment[billed_revenue_usd] )
+
+// ======================================================================================
+// Revenue retention (kpi_revenue_retention), 12 months, constant currency
+// ======================================================================================
+
+NRR =
+VAR LastMonth = CALCULATE ( MAX ( kpi_revenue_retention[month_start] ) )
+RETURN
+    CALCULATE (
+        DIVIDE ( SUM ( kpi_revenue_retention[net_retained_mrr_usd] ), SUM ( kpi_revenue_retention[mrr_12m_ago_usd] ) ),
+        REMOVEFILTERS ( 'Date' ),
+        'Date'[Date] = LastMonth
+    )
+
+GRR =
+VAR LastMonth = CALCULATE ( MAX ( kpi_revenue_retention[month_start] ) )
+RETURN
+    CALCULATE (
+        DIVIDE ( SUM ( kpi_revenue_retention[gross_retained_mrr_usd] ), SUM ( kpi_revenue_retention[mrr_12m_ago_usd] ) ),
+        REMOVEFILTERS ( 'Date' ),
+        'Date'[Date] = LastMonth
+    )
+
+Logo Retention =
+VAR LastMonth = CALCULATE ( MAX ( kpi_revenue_retention[month_start] ) )
+RETURN
+    CALCULATE (
+        DIVIDE ( SUM ( kpi_revenue_retention[accounts_retained] ), SUM ( kpi_revenue_retention[accounts_12m_ago] ) ),
+        REMOVEFILTERS ( 'Date' ),
+        'Date'[Date] = LastMonth
+    )
+
+// ======================================================================================
+// Funnel (kpi_funnel_by_cohort). Rates use mature cohorts only (signed up 45+ days before the as-of date).
+// ======================================================================================
+
+Signups = SUM ( kpi_funnel_by_cohort[signups] )
+
+Signups (mature) =
+CALCULATE ( SUM ( kpi_funnel_by_cohort[signups] ), kpi_funnel_by_cohort[is_mature] = TRUE () )
+Onboarded (mature) =
+CALCULATE ( SUM ( kpi_funnel_by_cohort[onboarded] ), kpi_funnel_by_cohort[is_mature] = TRUE () )
+Activated (mature) =
+CALCULATE ( SUM ( kpi_funnel_by_cohort[activated] ), kpi_funnel_by_cohort[is_mature] = TRUE () )
+Trial Started (mature) =
+CALCULATE ( SUM ( kpi_funnel_by_cohort[trial_started] ), kpi_funnel_by_cohort[is_mature] = TRUE () )
+Paid (mature) =
+CALCULATE ( SUM ( kpi_funnel_by_cohort[paid] ), kpi_funnel_by_cohort[is_mature] = TRUE () )
+
+Activation Rate = DIVIDE ( [Activated (mature)], [Signups (mature)] )
+Signup to Paid Rate = DIVIDE ( [Paid (mature)], [Signups (mature)] )
+Trial to Paid Rate = DIVIDE ( [Paid (mature)], [Trial Started (mature)] )
+
+// For the funnel visual: put 'Funnel Steps'[Step] in Category (sorted by Step Order) and this in Values.
+Funnel Accounts =
+SWITCH (
+    SELECTEDVALUE ( 'Funnel Steps'[Step] ),
+    "Signed up", [Signups (mature)],
+    "Onboarded", [Onboarded (mature)],
+    "Activated", [Activated (mature)],
+    "Started trial", [Trial Started (mature)],
+    "Paid", [Paid (mature)]
+)
+
+// ======================================================================================
+// User retention (kpi_user_retention_cohorts). Only fully observed cells count.
+// ======================================================================================
+
+Retention % =
+DIVIDE (
+    CALCULATE ( SUM ( kpi_user_retention_cohorts[active_users] ), kpi_user_retention_cohorts[is_complete] = TRUE () ),
+    CALCULATE ( SUM ( kpi_user_retention_cohorts[cohort_users] ), kpi_user_retention_cohorts[is_complete] = TRUE () )
+)
+
+Week 1 Retention = CALCULATE ( [Retention %], kpi_user_retention_cohorts[week_number] = 1 )
+Week 4 Retention = CALCULATE ( [Retention %], kpi_user_retention_cohorts[week_number] = 4 )
+Week 12 Retention = CALCULATE ( [Retention %], kpi_user_retention_cohorts[week_number] = 12 )
+
+// ======================================================================================
+// Acquisition (kpi_acquisition_monthly)
+// ======================================================================================
+
+Ad Spend = SUM ( kpi_acquisition_monthly[spend_usd] )
+Channel Signups = SUM ( kpi_acquisition_monthly[signups] )
+Channel Conversions = SUM ( kpi_acquisition_monthly[converted_to_paid] )
+
+Cost per Signup = DIVIDE ( [Ad Spend], [Channel Signups] )
+
+// Paid-media CAC: spend over customers acquired through paid channels.
+CAC =
+DIVIDE (
+    [Ad Spend],
+    CALCULATE ( [Channel Conversions], kpi_acquisition_monthly[channel] IN { "paid_search", "paid_social" } )
+)
+
+// ======================================================================================
+// Experiment (kpi_onboarding_experiment)
+// ======================================================================================
+
+Experiment Activation Rate =
+DIVIDE ( SUM ( kpi_onboarding_experiment[activated] ), SUM ( kpi_onboarding_experiment[accounts] ) )
+
+Experiment Lift (pts) =
+VAR Treatment = CALCULATE ( [Experiment Activation Rate], kpi_onboarding_experiment[variant] = "treatment" )
+VAR Control = CALCULATE ( [Experiment Activation Rate], kpi_onboarding_experiment[variant] = "control" )
+RETURN ( Treatment - Control ) * 100
+
+// ======================================================================================
+// Churn risk (churn_risk_scores, written by notebooks/03_churn_model.ipynb)
+// ======================================================================================
+
+Expected MRR at Risk = SUM ( churn_risk_scores[expected_mrr_at_risk_usd] )
+
+High-Risk Accounts =
+CALCULATE ( COUNTROWS ( churn_risk_scores ), churn_risk_scores[risk_tier] = "High" )
+
+High-Risk MRR =
+CALCULATE ( SUM ( churn_risk_scores[mrr_usd] ), churn_risk_scores[risk_tier] = "High" )

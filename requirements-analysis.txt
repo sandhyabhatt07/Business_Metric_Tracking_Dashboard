@@ -1,0 +1,5 @@
+jupyterlab>=4.0
+matplotlib>=3.8
+scipy>=1.12
+statsmodels>=0.14
+scikit-learn>=1.5

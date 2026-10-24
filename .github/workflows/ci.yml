@@ -21,8 +21,6 @@ jobs:
           cache: pip
       - name: Install
         run: pip install -r requirements.txt -r docker/requirements-dbt.txt
-      - name: Python tests
-        run: python -m pytest -q
       - name: Generate a small dataset and load it into DuckDB
         run: |
           python -m data_generator.generate --out data/raw --accounts 500
@@ -32,3 +30,5 @@ jobs:
         run: |
           dbt deps
           dbt build
+      - name: Python tests (including feature leakage checks against the built warehouse)
+        run: python -m pytest -q

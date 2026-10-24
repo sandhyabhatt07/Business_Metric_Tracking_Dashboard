@@ -1,0 +1,15 @@
+{
+  "name": "PulseBoard",
+  "dataColors": ["#2f6fdb", "#0b8a5f", "#8a8f98", "#e0a100", "#c0392b", "#7e57c2", "#c9ccd1", "#1b3a6b"],
+  "background": "#ffffff",
+  "foreground": "#1f2329",
+  "tableAccent": "#2f6fdb",
+  "good": "#0b8a5f",
+  "neutral": "#e0a100",
+  "bad": "#c0392b",
+  "textClasses": {
+    "title": {"fontFace": "Segoe UI Semibold", "fontSize": 12, "color": "#1f2329"},
+    "label": {"fontFace": "Segoe UI", "fontSize": 9, "color": "#5f6670"},
+    "callout": {"fontFace": "Segoe UI Semibold", "fontSize": 26, "color": "#1f2329"}
+  }
+}

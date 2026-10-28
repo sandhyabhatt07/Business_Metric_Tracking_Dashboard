@@ -54,12 +54,13 @@
     cast({{ dbt.date_trunc('month', col) }} as date)
 {%- endmacro %}
 
+{# BigQuery intervals must be INT64, and expressions such as dbt_utils' generated_number come out as FLOAT64. #}
 {% macro add_days(date_col, n) -%}
-    cast({{ dbt.dateadd('day', n, date_col) }} as date)
+    cast({{ dbt.dateadd('day', 'cast(' ~ n ~ ' as ' ~ dbt.type_int() ~ ')', date_col) }} as date)
 {%- endmacro %}
 
 {% macro add_months(date_col, n) -%}
-    cast({{ dbt.dateadd('month', n, date_col) }} as date)
+    cast({{ dbt.dateadd('month', 'cast(' ~ n ~ ' as ' ~ dbt.type_int() ~ ')', date_col) }} as date)
 {%- endmacro %}
 
 {# True when `later_ts` happened within `days` days after `earlier_ts`. #}

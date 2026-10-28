@@ -62,9 +62,12 @@ a fixed range ending 30 Sep 2026 (the data's as-of date).
 **Revenue**
 
 - Stacked column chart: `month_start`; metrics `new_mrr_usd`, `expansion_mrr_usd`,
-  `reactivation_mrr_usd`, and (as negative calculated fields) contraction and churned MRR.
+  `reactivation_mrr_usd`, and two calculated fields so losses stack below zero:
+  `SUM(contraction_mrr_usd) * -1` and `SUM(churned_mrr_usd) * -1` (Looker Studio rejects a leading
+  minus sign). In Style, tick Stacked bars and set Bars to 30; sort by `month_start` ascending.
 - Time series: `month_start` by `mrr_usd` and `billed_revenue_usd`.
-- Bar chart: `segment` by NRR and GRR (`kpi_revenue_retention`, date range = last month).
+- Table: `segment` with NRR and GRR (`kpi_revenue_retention`, filter `month_start` = `20260901`;
+  Looker Studio date filters take `YYYYMMDD`). Heatmap number type for both columns.
 
 **Engagement and growth**
 

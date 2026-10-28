@@ -108,7 +108,7 @@ ingestion/        extractors for each source and loaders for BigQuery (or local 
 transform/        dbt project: staging, intermediate, core (star schema) and metrics models
 notebooks/        A/B test analysis, retention and survival, churn model
 analysis/         notebook helpers: warehouse access, churn features, CSV export
-dashboard/        dashboard spec, Power BI guide, DAX measures, theme, Looker Studio guide
+dashboard/        dashboard pages and design decisions, Power BI DAX measures and theme
 dags/             Airflow DAG: generate sources, load raw tables, check them, dbt build
 docker/           Airflow image (Airflow 3.2, BigQuery client, dbt in its own virtualenv)
 docs/             setup guide, data sources, warehouse model and the metrics spec
